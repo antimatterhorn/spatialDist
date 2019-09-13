@@ -1,0 +1,380 @@
+Public Class Spiral_Galaxy
+    Dim r0 As Double = 8            'kpc
+    Dim v0 As Double = 0.205        '200 km/s -> kpc/Myr
+    Dim rmax As Double = 20         'kpc
+    Dim tau As Double = 20000        '(Myr)
+
+    Dim sf As New SpecialFunctions
+    Dim op As New Operations
+
+    Dim dtBlue As New DataTable
+    Dim dtGRB As New DataTable
+
+    Dim x() As Double
+    Dim y() As Double
+    Dim y2() As Double
+    Dim yout As Double
+
+    Function omega(ByVal r As Double) As Double
+        If r < 1 Then
+            Return v0 / 1
+        Else
+            Return v0 / r
+        End If
+
+        'Return 0.03
+    End Function
+
+    Function oprime(ByVal r As Double) As Double
+        Return v0 / r0 * (1 - 1 / Math.Sqrt(2)) - omega(r)
+    End Function
+
+    Function phi(ByVal r As Double) As Double
+        Return Math.Exp(-r / 3)
+    End Function
+
+    Private Sub spline(ByVal x() As Double, ByVal y() As Double, ByVal n As Integer, ByVal yp1 As Double, ByVal ypn As Double)
+        Dim i, k As Integer
+        Dim p, qn, sig, un, u() As Double
+
+        ReDim y2(n)
+        ReDim u(n)
+
+        If yp1 > 9.9E+29 Then
+            y2(0) = u(0) = 0.0
+        Else
+            y2(0) = -0.5
+            u(0) = (3.0 / (x(1) - x(0))) * ((y(1) - y(0)) / (x(1) - x(0)) - yp1)
+        End If
+
+        For i = 1 To n - 1
+            sig = (x(i) - x(i - 1)) / (x(i + 1) - x(i - 1))
+            p = sig * y2(i - 1) + 2
+            y2(i) = (sig - 1) / p
+            u(i) = (y(i + 1) - y(i)) / (x(i + 1) - x(i)) - (y(i) - y(i - 1)) / (x(i) - x(i - 1))
+            u(i) = (6 * u(i) / (x(i + 1) - x(i - 1)) - sig * u(i - 1)) / p
+        Next i
+
+        If ypn > 9.9E+29 Then
+            qn = un = 0.0
+        Else
+            qn = 0.5
+            un = (3.0 / (x(n) - x(n - 1))) * (ypn - (y(n) - y(n - 1)) / (x(n) - x(n - 1)))
+        End If
+
+        y2(n) = (un - qn * u(n - 1)) / (qn * y2(n - 1) + 1)
+        For k = n - 1 To k >= 1 Step -1
+            y2(k) = y2(k) * y2(k + 1) + u(k)
+
+        Next
+    End Sub
+
+    Private Function splint(ByVal xa() As Double, ByVal ya() As Double, ByVal y2a() As Double, ByVal n As Integer, ByVal x As Double)
+        Dim klo, khi, k As Integer
+        Dim h, b, a As Double
+
+        klo = 0
+        khi = n
+        Do While khi - klo > 1
+            k = khi + klo >> 1
+
+            If xa(k) > x Then
+                khi = k
+            Else
+                klo = k
+            End If
+        Loop
+        h = xa(khi) - xa(klo)
+        a = (xa(khi) - x) / h
+        b = (x - xa(klo)) / h
+        yout = a * ya(klo) + b * ya(khi) + ((a ^ 3 - a) * y2a(klo) + (b ^ 3 - b) * y2a(khi)) * (h ^ 2) / 6
+
+        Return yout
+    End Function
+
+    Private Sub Button1_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles Button1.Click
+        If TextBox2.Text <> "" Then
+            rmax = TextBox2.Text
+        End If
+
+        Dim ext As String = "bmp"
+
+        If TextBox3.Text <> "" Then
+            ext = TextBox3.Text
+        End If
+
+        Button1.Enabled = False
+        Button2.Enabled = False
+
+        dtBlue = IntegratedLight("ch" & tbMetal.Text & ".csv")
+        op.ExportToCSV(dtBlue, "C:\hosting\grb\io\Spiral\", "CH" & tbMetal.Text & "-" & ddBand.Text & "-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.csv")
+        Dim polarBlue As DataTable = op.polar2xy(dtBlue)
+        op.ExportToCSV(polarBlue, "C:\hosting\grb\io\Spiral\polar", "CH" & tbMetal.Text & "-" & ddBand.Text & "-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.csv")
+
+        dtGRB = SNe(CInt(tbMass1.Text), CInt(tbMass2.Text), tbMetal.Text)
+        op.ExportToCSV(dtGRB, "C:\hosting\grb\io\Spiral\", "SN" & tbMetal.Text & "-" & tbMass1.Text & "M-" & tbMass2.Text & "M-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.csv")
+        Dim polarGRB As DataTable = op.polar2xy(dtGRB)
+        op.ExportToCSV(polarGRB, "C:\hosting\grb\io\Spiral\polar", "SN" & tbMetal.Text & "-" & tbMass1.Text & "M-" & tbMass2.Text & "M-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.csv")
+
+        If ComboBox1.Text = "Color" Then
+            op.CreateColorImage(polarBlue, "C:\hosting\grb\io\Spiral\polarCH" & tbMetal.Text & "-" & ddBand.Text & "-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.bmp", System.Drawing.Imaging.ImageFormat.Bmp)
+            op.CreateColorImage(polarGRB, "C:\hosting\grb\io\Spiral\polarSN" & tbMetal.Text & "-" & tbMass1.Text & "M-" & tbMass2.Text & "M-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.bmp", System.Drawing.Imaging.ImageFormat.Bmp)
+        Else
+            op.CreateImage(polarBlue, "C:\hosting\grb\io\Spiral\polarCH" & tbMetal.Text & "-" & ddBand.Text & "-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.bmp")
+            op.CreateImage(polarGRB, "C:\hosting\grb\io\Spiral\polarSN" & tbMetal.Text & "-" & tbMass1.Text & "M-" & tbMass2.Text & "M-" & CStr(CInt(TextBox1.Text) ^ 2) & "px.bmp")
+        End If
+
+        ToolStripProgressBar1.Value = 0
+
+        PictureBox1.ImageLocation = "C:\hosting\grb\io\Spiral\polarCH" & tbMetal.Text & "-" & ddBand.Text & "-" & CStr(CInt(TextBox1.Text) ^ 2) & "px." & ext
+        PictureBox1.SizeMode = PictureBoxSizeMode.Zoom
+        PictureBox2.ImageLocation = "C:\hosting\grb\io\Spiral\polarSN" & tbMetal.Text & "-" & tbMass1.Text & "M-" & tbMass2.Text & "M-" & CStr(CInt(TextBox1.Text) ^ 2) & "px." & ext
+        PictureBox2.SizeMode = PictureBoxSizeMode.Zoom
+
+        Button1.Enabled = True
+        Button2.Enabled = True
+    End Sub
+
+    Private Sub Button2_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles Button2.Click
+        Button1.Enabled = False
+        Button2.Enabled = False
+
+        Dim dtResult As DataTable = op.BubbleSort(dtBlue, dtGRB, TextBox1.Text, rmax)
+        Dim fileName As New System.Text.StringBuilder
+        fileName.Append("Fruchter")
+        fileName.Append(tbMetal.Text)
+        fileName.Append("_")
+        fileName.Append(ddBand.Text)
+        fileName.Append("_")
+        fileName.Append(tbMass1.Text)
+        fileName.Append("-")
+        fileName.Append(tbMass2.Text)
+        fileName.Append("M_")
+        fileName.Append(CStr(CInt(TextBox1.Text) ^ 2))
+        fileName.Append("px.csv")
+
+        op.ExportToCSV(dtResult, "C:\hosting\grb\io\Spiral\", fileName.ToString)
+
+        DataGridView1.DataSource = dtResult
+        DataGridView1.Refresh()
+
+        Plot(dtResult)
+
+        Button1.Enabled = True
+        Button2.Enabled = True
+    End Sub
+
+    Function IntegratedLight(ByVal FileName As String) As DataTable
+        Dim csv As New CSVData
+        csv.LoadCSV("c:\hosting\grb\io\" & FileName, True)
+        Dim r As Integer = csv.CSVDataSet.Tables(0).Rows.Count - 1
+        ReDim x(r)
+        ReDim y(r)
+        For i As Integer = 0 To r
+            x(i) = csv.CSVDataSet.Tables(0).Rows(i).Item("Age(Myr)")
+            y(i) = csv.CSVDataSet.Tables(0).Rows(i).Item(ddBand.Text)
+        Next
+        csv.Dispose()
+
+        spline(x, y, r - 1, 0, 0)
+
+        Dim iMax As Integer = 50
+        If TextBox1.Text <> "" Then
+            iMax = CInt(TextBox1.Text)
+        End If
+        Dim jMax As Integer = iMax
+
+        ToolStripProgressBar1.Maximum = iMax
+        ToolStripProgressBar1.Minimum = 0
+        ToolStripProgressBar1.ForeColor = Color.Green
+
+        Dim dt As New DataTable
+        For j As Integer = 0 To jMax
+            dt.Columns.Add("theta=" + CStr(j * 2 * 3.1416 / jMax), System.Type.GetType("System.Double"))
+        Next
+
+        For i As Integer = 0 To iMax 'iterate across r
+            Dim insRow As DataRow = dt.NewRow
+
+            For j As Integer = 0 To jMax 'iterate across theta
+                Dim theta As Double = (j * 2 * 3.1416 / jMax)
+                Dim ri As Double = i * rmax / iMax
+                Dim L As Double = 0
+                Dim k As Integer = Math.Round(Math.Abs((1 / 3.1416) * (tau * oprime(1))), 0) + 1
+
+                For n As Integer = -k To k
+                    Dim arg As Double = (0 - theta / oprime(ri) - n * 3.1416 / oprime(ri))
+
+                    If arg < 0 Or arg > 20000 Then
+                        L += 0
+                    Else
+                        L += 10 ^ ((4.8 - splint(x, y, y2, (r - 1), arg)) / 2.5) * phi(ri) / Math.Abs(oprime(ri))
+                    End If
+                Next
+                insRow.Item(j) = L
+            Next
+
+            dt.Rows.Add(insRow)
+            ToolStripProgressBar1.Value = i
+        Next
+
+        Return dt
+    End Function
+
+    Function SNe(ByVal Mass1 As Double, ByVal Mass2 As Double, ByVal Metallicity As String) As DataTable
+        Dim csv As New CSVData
+        csv.LoadCSV("c:\hosting\grb\io\msto" & Metallicity & ".csv", True)
+        Dim dtSN As DataTable = csv.CSVDataSet.Tables(0)
+        Dim r As Integer = dtSN.Rows.Count - 1
+        ReDim x(r)
+        ReDim y(r)
+        For i As Integer = 0 To r
+            x(i) = dtSN.Rows(i).Item("Log Age")
+            y(i) = dtSN.Rows(i).Item("Mass")
+        Next
+
+        Dim coef(5) As Single
+        For i As Integer = 0 To 4
+            coef(i) = dtSN.Rows(i).Item("Coeffs")
+        Next
+
+        csv.Dispose()
+        dtSN.Dispose()
+
+        'spline(x, y, r - 1, 1.0E+30, 1.0E+30)
+
+        Dim iMax As Integer = 50
+        If TextBox1.Text <> "" Then
+            iMax = CInt(TextBox1.Text)
+        End If
+        Dim jMax As Integer = iMax
+
+        ToolStripProgressBar1.Maximum = iMax
+        ToolStripProgressBar1.Minimum = 0
+        ToolStripProgressBar1.ForeColor = Color.Red
+
+        Dim dt As New DataTable
+        For j As Integer = 0 To jMax
+            dt.Columns.Add("theta=" + CStr(j * 2 * 3.1416 / jMax), System.Type.GetType("System.Double"))
+        Next
+
+        For i As Integer = 0 To iMax 'iterate across r
+            Dim insRow As DataRow = dt.NewRow
+
+            For j As Integer = 0 To jMax 'iterate across theta
+                Dim theta As Double = (j * 2.0 * 3.1416 / jMax)
+                Dim ri As Double = CSng(i) * CSng(rmax) / CSng(iMax)
+                Dim L As Double = 0
+                Dim dth As Double = 2.0 * 3.1416 / jMax
+                Dim tauprime As Double = (10 ^ op.LInterpolate(y, x, Mass1)) / 1000000 'reverse interpolate to get time from min Mass
+                Dim k As Integer = Math.Round(Math.Abs((1 / 3.1416) * (tauprime * oprime(1))), 0) + 1
+
+                For n As Integer = -k To k
+                    Dim arg As Double = -(0.0 + theta / oprime(ri) + CSng(n) * 3.1416 / oprime(ri))
+                    Dim arg1 As Double = -(0.0 + (theta - dth / 2.0) / oprime(ri) + CSng(n) * 3.1416 / oprime(ri))
+                    Dim arg2 As Double = -(0.0 + (theta + dth / 2.0) / oprime(ri) + CSng(n) * 3.1416 / oprime(ri))
+
+                    arg1 = Math.Log((arg1 / 1.1) * 1000000, 10)
+                    arg2 = Math.Log((arg2 / 1.1) * 1000000, 10)
+
+                    If arg < 3 Or arg > 15000 Then
+                        L += 0
+                    Else
+                        'Dim m1 As Double = splint(x, y, y2, r - 1, arg1 / 1.1)
+                        'Dim m2 As Double = splint(x, y, y2, r - 1, arg2 / 1.1)
+                        'Dim m1 As Double = op.LInterpolate(x, y, Math.Log((arg1 / 1.1) * 1000000, 10))
+                        'Dim m2 As Double = op.LInterpolate(x, y, Math.Log((arg2 / 1.1) * 1000000, 10))
+                        Dim m1 As Double = 10 ^ (coef(0) + coef(1) * arg1 + coef(2) * arg1 ^ 2 + coef(3) * arg1 ^ 3 + coef(4) * arg1 ^ 4)
+                        Dim m2 As Double = 10 ^ (coef(0) + coef(1) * arg2 + coef(2) * arg2 ^ 2 + coef(3) * arg2 ^ 3 + coef(4) * arg2 ^ 4)
+
+                        If m1 > Mass2 Then m1 = Mass2
+                        If m2 > Mass2 Then m2 = Mass2
+                        If m1 < Mass1 Then m1 = Mass1
+                        If m2 < Mass1 Then m2 = Mass1
+
+                        L += 1.1 / 1.3 * (m2 ^ -1.3 - m1 ^ -1.3) * phi(ri) / dth
+                    End If
+                Next
+                insRow.Item(j) = L
+            Next
+
+            dt.Rows.Add(insRow)
+            ToolStripProgressBar1.Value = i
+        Next
+
+        Return dt
+    End Function
+
+    Sub Plot(ByVal dt As DataTable)
+        Dim lp As NPlot.LinePlot = New NPlot.LinePlot
+        Dim pp As NPlot.PointPlot = New NPlot.PointPlot
+
+        Dim XDAT As ArrayList = New ArrayList
+        Dim YDAT As ArrayList = New ArrayList
+
+        XDAT.Clear()
+        YDAT.Clear()
+        PlotSurface2D1.Clear()
+        PlotSurface2D1.Title = "Fruchter Plot"
+        PlotSurface2D1.BackColor = Color.Empty
+
+        For Each row As DataRow In dt.Rows
+            XDAT.Add(row.Item("FracBlue"))
+            YDAT.Add(row.Item("FracGRB"))
+        Next
+
+        pp.AbscissaData = XDAT
+        pp.DataSource = YDAT
+        pp.Marker.Type = NPlot.Marker.MarkerType.FilledCircle
+        pp.Marker.Size = 1
+        pp.Marker.Color = Color.Red
+        lp.AbscissaData = XDAT
+        lp.DataSource = XDAT
+        lp.Color = Color.Blue
+        PlotSurface2D1.Add(pp)
+        PlotSurface2D1.Add(lp)
+        PlotSurface2D1.XAxis1.Label = "Fraction of Light"
+        PlotSurface2D1.YAxis1.Label = "Fraction of GRBs"
+
+        PlotSurface2D1.Refresh()
+    End Sub
+
+    Private Sub GraphButton_Click(ByVal sender As System.Object, ByVal e As System.EventArgs) Handles ToolStripButton1.Click
+        If PlotSurface2D1.Visible = True Then
+            PlotSurface2D1.Visible = False
+        Else
+            PlotSurface2D1.Visible = True
+        End If
+    End Sub
+
+
+End Class
+
+
+
+Function polar2xy(ByVal dt As DataTable) As DataTable
+        'Dim L As Integer = Math.Truncate(dt.Rows.Count / Math.Sqrt(2))
+        Dim R As Integer = dt.Rows.Count - 1
+        Dim Mat(,) As Double = DT2Mat(dt)
+        Dim out(2 * R + 1, 2 * R + 1) As Double
+
+        For y As Integer = -R To R
+
+            For x As Integer = -R To R
+                If x <> 0 And Math.Sqrt(x ^ 2 + y ^ 2) < R Then
+                    If y >= 0 Then
+                        out(y + R, x + R) += Mat(CInt(Math.Round(Math.Sqrt(x ^ 2 + y ^ 2), 0)), CInt(Math.Round((Math.Atan(y / x) + Math.PI / 2) * R / (2 * Math.PI), 0)))
+                    Else
+                        'y = Math.Abs(y)
+                        out(y + R, x + R) += Mat(CInt(Math.Round(Math.Sqrt(x ^ 2 + y ^ 2), 0)), CInt(Math.Round((Math.Atan(y / x) + Math.PI / 2 + Math.PI) * R / (2 * Math.PI), 0)))
+                    End If
+                ElseIf x = 0 Then
+                    out(y + R, x + R) += Mat(Math.Abs(y), CInt(Math.Round(R / 2, 0)))
+                Else
+                    out(y + R, x + R) += 0
+                End If
+            Next
+        Next
+
+        Return Mat2DT(out)
+    End Function
